@@ -30,6 +30,7 @@ export interface OwnedItem {
   purchasePrice: number;
   loanPayment?: number;
   stockId?: string;
+  assetId?: string;
   quantity?: number;
 }
 
@@ -39,4 +40,10 @@ export interface OwnedStock {
   quantity: number;
   avgPrice: number;
   totalDividends: number;
+}
+
+export interface OwnedAsset {
+  quantity: number;
+  avgPrice: number;
+  totalIncome: number;
 }

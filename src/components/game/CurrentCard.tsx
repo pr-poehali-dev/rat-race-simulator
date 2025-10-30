@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import Icon from "@/components/ui/icon";
-import { Stock, Asset, Expense, CardType, OwnedStock } from "@/types/game";
+import { Stock, Asset, Expense, CardType, OwnedStock, OwnedAsset } from "@/types/game";
 
 interface CurrentCardProps {
   currentCardType: CardType;
@@ -11,10 +11,12 @@ interface CurrentCardProps {
   stockQuantity: number;
   setStockQuantity: (quantity: number) => void;
   ownedStocks: { [key: string]: OwnedStock };
+  ownedAssets: { [key: string]: OwnedAsset };
   balance: number;
   canAffordWithLoan: (price: number, monthlyPayment: number) => boolean;
   buyCard: (useLoan: boolean) => void;
   sellStock: (quantity: number) => void;
+  sellAsset: () => void;
   skipCard: () => void;
 }
 
@@ -24,10 +26,12 @@ const CurrentCard = ({
   stockQuantity,
   setStockQuantity,
   ownedStocks,
+  ownedAssets,
   balance,
   canAffordWithLoan,
   buyCard,
   sellStock,
+  sellAsset,
   skipCard,
 }: CurrentCardProps) => {
   if (!currentCard) {
@@ -58,6 +62,11 @@ const CurrentCard = ({
             {currentCardType === 'stock' && ownedStocks[(currentCard as Stock)?.id] && (
               <Badge variant="secondary">
                 В портфеле: {ownedStocks[(currentCard as Stock).id].quantity}шт
+              </Badge>
+            )}
+            {currentCardType === 'asset' && ownedAssets[(currentCard as Asset)?.id] && (
+              <Badge variant="secondary">
+                В портфеле: {ownedAssets[(currentCard as Asset).id].quantity}шт
               </Badge>
             )}
             <Badge variant={currentCardType === 'stock' ? 'default' : currentCardType === 'asset' ? 'secondary' : 'destructive'}>
@@ -182,6 +191,18 @@ const CurrentCard = ({
               >
                 <Icon name="TrendingDown" size={18} className="mr-2" />
                 Продать ({stockQuantity}шт)
+              </Button>
+            )}
+            
+            {currentCardType === 'asset' && ownedAssets[(currentCard as Asset).id] && (
+              <Button
+                onClick={sellAsset}
+                variant="destructive"
+                className="w-full"
+                disabled={!ownedAssets[(currentCard as Asset).id] || ownedAssets[(currentCard as Asset).id].quantity < 1}
+              >
+                <Icon name="TrendingDown" size={18} className="mr-2" />
+                Продать (70% от стоимости)
               </Button>
             )}
 

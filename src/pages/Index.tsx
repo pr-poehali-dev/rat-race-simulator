@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { Stock, Asset, Expense, CardType, OwnedItem, OwnedStock } from "@/types/game";
+import { Stock, Asset, Expense, CardType, OwnedItem, OwnedStock, OwnedAsset } from "@/types/game";
 import StatsCards from "@/components/game/StatsCards";
 import CurrentCard from "@/components/game/CurrentCard";
 import BalanceChart from "@/components/game/BalanceChart";
@@ -8,8 +8,8 @@ import Portfolio from "@/components/game/Portfolio";
 
 const Index = () => {
   const [balance, setBalance] = useState(10000);
-  const [monthlyIncome, setMonthlyIncome] = useState(0);
-  const [monthlyExpenses, setMonthlyExpenses] = useState(0);
+  const [monthlyIncome, setMonthlyIncome] = useState(3000);
+  const [monthlyExpenses, setMonthlyExpenses] = useState(2000);
   const [level, setLevel] = useState(1);
   const [experience, setExperience] = useState(0);
   const [balanceHistory, setBalanceHistory] = useState<number[]>([10000]);
@@ -18,6 +18,7 @@ const Index = () => {
   const [ownedItems, setOwnedItems] = useState<OwnedItem[]>([]);
   const [stockQuantity, setStockQuantity] = useState(1);
   const [ownedStocks, setOwnedStocks] = useState<{[key: string]: OwnedStock}>({});
+  const [ownedAssets, setOwnedAssets] = useState<{[key: string]: OwnedAsset}>({});
 
   const stockTemplates = [
     { id: "1", name: "TechCorp", symbol: "TECH", basePrice: 150, baseDividend: 15 },
@@ -34,10 +35,10 @@ const Index = () => {
   ];
 
   const expenseTemplates = [
-    { id: "1", name: "Новая машина", icon: "Car", baseCost: 25000, baseExpense: 250 },
-    { id: "2", name: "Яхта", icon: "Ship", baseCost: 200000, baseExpense: 2000 },
-    { id: "3", name: "Второй дом", icon: "Home", baseCost: 80000, baseExpense: 800 },
-    { id: "4", name: "Самолёт", icon: "Plane", baseCost: 500000, baseExpense: 5000 },
+    { id: "1", name: "Ребёнок", icon: "Baby", baseCost: 0, baseExpense: 500 },
+    { id: "2", name: "Увеличение аренды", icon: "Home", baseCost: 0, baseExpense: 300 },
+    { id: "3", name: "Кредитная карта", icon: "CreditCard", baseCost: 0, baseExpense: 400 },
+    { id: "4", name: "Страховка здоровья", icon: "Heart", baseCost: 0, baseExpense: 250 },
   ];
 
   const generateCard = (type: CardType) => {
@@ -191,6 +192,21 @@ const Index = () => {
     } else if (currentCardType === 'asset') {
       const asset = currentCard as Asset;
       setMonthlyIncome((prev) => prev + asset.income);
+      
+      setOwnedAssets((prev) => {
+        const existing = prev[asset.id] || {quantity: 0, avgPrice: 0, totalIncome: 0};
+        const newQuantity = existing.quantity + 1;
+        const newAvgPrice = ((existing.avgPrice * existing.quantity) + asset.cost) / newQuantity;
+        return {
+          ...prev,
+          [asset.id]: {
+            quantity: newQuantity,
+            avgPrice: newAvgPrice,
+            totalIncome: existing.totalIncome + asset.income
+          }
+        };
+      });
+      
       setOwnedItems((prev) => [
         ...prev,
         {
@@ -199,6 +215,7 @@ const Index = () => {
           monthlyIncome: asset.income,
           purchasePrice: asset.cost,
           loanPayment: useLoan ? loanPayment : undefined,
+          assetId: asset.id,
         },
       ]);
       if (useLoan) {
@@ -280,6 +297,41 @@ const Index = () => {
     toast.success(`Продано ${quantity} акций ${stock.symbol} за $${revenue.toFixed(0)}`);
     setStockQuantity(1);
   };
+  
+  const sellAsset = () => {
+    if (!currentCard || currentCardType !== 'asset') return;
+    const asset = currentCard as Asset;
+    const owned = ownedAssets[asset.id];
+    
+    if (!owned || owned.quantity < 1) {
+      toast.error(`У вас нет актива ${asset.name}!`);
+      return;
+    }
+    
+    const salePrice = asset.cost * 0.7;
+    
+    setBalance((prev) => prev + salePrice);
+    setMonthlyIncome((prev) => prev - asset.income);
+    
+    setOwnedAssets((prev) => {
+      const newQuantity = owned.quantity - 1;
+      if (newQuantity === 0) {
+        const { [asset.id]: _, ...rest } = prev;
+        return rest;
+      }
+      return {
+        ...prev,
+        [asset.id]: {
+          ...owned,
+          quantity: newQuantity,
+          totalIncome: owned.totalIncome - asset.income
+        }
+      };
+    });
+    
+    addExperience(25);
+    toast.success(`Продан актив ${asset.name} за $${salePrice.toFixed(0)} (70% от стоимости)`);
+  };
 
   const addExperience = (amount: number) => {
     const newExp = experience + amount;
@@ -315,10 +367,12 @@ const Index = () => {
               stockQuantity={stockQuantity}
               setStockQuantity={setStockQuantity}
               ownedStocks={ownedStocks}
+              ownedAssets={ownedAssets}
               balance={balance}
               canAffordWithLoan={canAffordWithLoan}
               buyCard={buyCard}
               sellStock={sellStock}
+              sellAsset={sellAsset}
               skipCard={skipCard}
             />
           </div>
