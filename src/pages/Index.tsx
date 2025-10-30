@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import Icon from "@/components/ui/icon";
 import { toast } from "sonner";
 
@@ -37,6 +38,8 @@ interface OwnedItem {
   monthlyIncome: number;
   purchasePrice: number;
   loanPayment?: number;
+  stockId?: string;
+  quantity?: number;
 }
 
 type CardType = 'stock' | 'asset' | 'expense';
@@ -51,6 +54,8 @@ const Index = () => {
   const [currentCardType, setCurrentCardType] = useState<CardType>('stock');
   const [currentCard, setCurrentCard] = useState<Stock | Asset | Expense | null>(null);
   const [ownedItems, setOwnedItems] = useState<OwnedItem[]>([]);
+  const [stockQuantity, setStockQuantity] = useState(1);
+  const [ownedStocks, setOwnedStocks] = useState<{[key: string]: {quantity: number, avgPrice: number, totalDividends: number}}>({});
 
   const stockTemplates = [
     { id: "1", name: "TechCorp", symbol: "TECH", basePrice: 150, baseDividend: 15 },
@@ -169,22 +174,58 @@ const Index = () => {
 
     if (currentCardType === 'stock') {
       const stock = currentCard as Stock;
-      setMonthlyIncome((prev) => prev + stock.dividend);
+      const totalCost = price * stockQuantity;
+      const totalLoanPayment = useLoan ? totalCost * 0.1 : 0;
+      
+      if (useLoan) {
+        if (!canAffordWithLoan(totalCost, totalLoanPayment)) {
+          toast.error("Денежный поток станет отрицательным! Нельзя взять кредит.");
+          return;
+        }
+      } else {
+        if (balance < totalCost) {
+          toast.error("Недостаточно средств!");
+          return;
+        }
+        setBalance((prev) => prev - totalCost);
+      }
+      
+      const totalDividends = stock.dividend * stockQuantity;
+      setMonthlyIncome((prev) => prev + totalDividends);
+      
+      setOwnedStocks((prev) => {
+        const existing = prev[stock.id] || {quantity: 0, avgPrice: 0, totalDividends: 0};
+        const newQuantity = existing.quantity + stockQuantity;
+        const newAvgPrice = ((existing.avgPrice * existing.quantity) + (stock.price * stockQuantity)) / newQuantity;
+        return {
+          ...prev,
+          [stock.id]: {
+            quantity: newQuantity,
+            avgPrice: newAvgPrice,
+            totalDividends: existing.totalDividends + totalDividends
+          }
+        };
+      });
+      
       setOwnedItems((prev) => [
         ...prev,
         {
           type: 'stock',
           name: `${stock.name} (${stock.symbol})`,
-          monthlyIncome: stock.dividend,
-          purchasePrice: stock.price,
-          loanPayment: useLoan ? loanPayment : undefined,
+          monthlyIncome: totalDividends,
+          purchasePrice: totalCost,
+          loanPayment: useLoan ? totalLoanPayment : undefined,
+          stockId: stock.id,
+          quantity: stockQuantity,
         },
       ]);
+      
       if (useLoan) {
-        setMonthlyExpenses((prev) => prev + loanPayment);
+        setMonthlyExpenses((prev) => prev + totalLoanPayment);
       }
-      addExperience(20);
-      toast.success(`Куплена акция ${stock.symbol}${useLoan ? ' в кредит' : ''}!`);
+      addExperience(20 * stockQuantity);
+      toast.success(`Куплено ${stockQuantity} акций ${stock.symbol}${useLoan ? ' в кредит' : ''}!`);
+      setStockQuantity(1);
     } else if (currentCardType === 'asset') {
       const asset = currentCard as Asset;
       setMonthlyIncome((prev) => prev + asset.income);
@@ -237,7 +278,45 @@ const Index = () => {
     const nextType = getNextCardType();
     setCurrentCardType(nextType);
     generateCard(nextType);
+    setStockQuantity(1);
     toast.info("Карточка пропущена");
+  };
+  
+  const sellStock = (quantity: number) => {
+    if (!currentCard || currentCardType !== 'stock') return;
+    const stock = currentCard as Stock;
+    const owned = ownedStocks[stock.id];
+    
+    if (!owned || owned.quantity < quantity) {
+      toast.error(`У вас недостаточно акций ${stock.symbol}!`);
+      return;
+    }
+    
+    const revenue = stock.price * quantity;
+    const dividendsLost = stock.dividend * quantity;
+    
+    setBalance((prev) => prev + revenue);
+    setMonthlyIncome((prev) => prev - dividendsLost);
+    
+    setOwnedStocks((prev) => {
+      const newQuantity = owned.quantity - quantity;
+      if (newQuantity === 0) {
+        const { [stock.id]: _, ...rest } = prev;
+        return rest;
+      }
+      return {
+        ...prev,
+        [stock.id]: {
+          ...owned,
+          quantity: newQuantity,
+          totalDividends: owned.totalDividends - dividendsLost
+        }
+      };
+    });
+    
+    addExperience(10 * quantity);
+    toast.success(`Продано ${quantity} акций ${stock.symbol} за $${revenue.toFixed(0)}`);
+    setStockQuantity(1);
   };
 
   const addExperience = (amount: number) => {
@@ -355,9 +434,16 @@ const Index = () => {
                     <Icon name={currentCardType === 'stock' ? 'LineChart' : currentCardType === 'asset' ? 'Building2' : 'AlertCircle'} size={20} />
                     {currentCardType === 'stock' ? 'Акция' : currentCardType === 'asset' ? 'Актив' : 'Расход'}
                   </CardTitle>
-                  <Badge variant={currentCardType === 'stock' ? 'default' : currentCardType === 'asset' ? 'secondary' : 'destructive'}>
-                    {currentCardType === 'stock' ? 'Дивиденды' : currentCardType === 'asset' ? 'Доход' : 'Обязательно'}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    {currentCardType === 'stock' && ownedStocks[(currentCard as Stock)?.id] && (
+                      <Badge variant="secondary">
+                        В портфеле: {ownedStocks[(currentCard as Stock).id].quantity}шт
+                      </Badge>
+                    )}
+                    <Badge variant={currentCardType === 'stock' ? 'default' : currentCardType === 'asset' ? 'secondary' : 'destructive'}>
+                      {currentCardType === 'stock' ? 'Дивиденды' : currentCardType === 'asset' ? 'Доход' : 'Обязательно'}
+                    </Badge>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -423,13 +509,39 @@ const Index = () => {
                     </div>
 
                     <div className="space-y-2">
+                      {currentCardType === 'stock' && (
+                        <div className="flex items-center gap-2 mb-3">
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={() => setStockQuantity(Math.max(1, stockQuantity - 1))}
+                          >
+                            <Icon name="Minus" size={16} />
+                          </Button>
+                          <Input
+                            type="number"
+                            min="1"
+                            value={stockQuantity}
+                            onChange={(e) => setStockQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                            className="text-center"
+                          />
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={() => setStockQuantity(stockQuantity + 1)}
+                          >
+                            <Icon name="Plus" size={16} />
+                          </Button>
+                        </div>
+                      )}
+                      
                       <Button
                         onClick={() => buyCard(false)}
                         className="w-full"
-                        disabled={balance < ('price' in currentCard ? currentCard.price : currentCard.cost)}
+                        disabled={balance < ('price' in currentCard ? currentCard.price : currentCard.cost) * (currentCardType === 'stock' ? stockQuantity : 1)}
                       >
                         <Icon name="ShoppingCart" size={18} className="mr-2" />
-                        Купить за наличные
+                        Купить {currentCardType === 'stock' ? `(${stockQuantity}шт) ` : ''}за наличные
                       </Button>
                       
                       <Button
@@ -437,13 +549,25 @@ const Index = () => {
                         variant="outline"
                         className="w-full"
                         disabled={!canAffordWithLoan(
-                          'price' in currentCard ? currentCard.price : currentCard.cost,
-                          ('price' in currentCard ? currentCard.price : currentCard.cost) * 0.1
+                          ('price' in currentCard ? currentCard.price : currentCard.cost) * (currentCardType === 'stock' ? stockQuantity : 1),
+                          ('price' in currentCard ? currentCard.price : currentCard.cost) * (currentCardType === 'stock' ? stockQuantity : 1) * 0.1
                         )}
                       >
                         <Icon name="CreditCard" size={18} className="mr-2" />
-                        Купить в кредит (10%/мес)
+                        Купить {currentCardType === 'stock' ? `(${stockQuantity}шт) ` : ''}в кредит (10%/мес)
                       </Button>
+
+                      {currentCardType === 'stock' && ownedStocks[(currentCard as Stock).id] && (
+                        <Button
+                          onClick={() => sellStock(stockQuantity)}
+                          variant="destructive"
+                          className="w-full"
+                          disabled={!ownedStocks[(currentCard as Stock).id] || ownedStocks[(currentCard as Stock).id].quantity < stockQuantity}
+                        >
+                          <Icon name="TrendingDown" size={18} className="mr-2" />
+                          Продать ({stockQuantity}шт)
+                        </Button>
+                      )}
 
                       {currentCardType !== 'expense' && (
                         <Button
