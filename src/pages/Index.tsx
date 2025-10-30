@@ -232,7 +232,7 @@ const Index = () => {
           type: 'expense',
           name: expense.name,
           monthlyIncome: -expense.monthlyExpense,
-          purchasePrice: expense.cost,
+          purchasePrice: 0,
           loanPayment: useLoan ? loanPayment : undefined,
         },
       ]);
