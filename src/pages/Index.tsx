@@ -3,7 +3,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Icon from "@/components/ui/icon";
 import { toast } from "sonner";
 
@@ -13,8 +12,6 @@ interface Stock {
   symbol: string;
   price: number;
   change: number;
-  priceHistory: number[];
-  owned: number;
 }
 
 interface Asset {
@@ -39,36 +36,8 @@ const Index = () => {
   const [level, setLevel] = useState(1);
   const [experience, setExperience] = useState(0);
   const [loans, setLoans] = useState<Loan[]>([]);
-
-  const [stocks, setStocks] = useState<Stock[]>([
-    {
-      id: "1",
-      name: "TechCorp",
-      symbol: "TECH",
-      price: 150,
-      change: 0,
-      priceHistory: [150],
-      owned: 0,
-    },
-    {
-      id: "2",
-      name: "MegaBank",
-      symbol: "BANK",
-      price: 80,
-      change: 0,
-      priceHistory: [80],
-      owned: 0,
-    },
-    {
-      id: "3",
-      name: "EnergyPlus",
-      symbol: "ENRG",
-      price: 120,
-      change: 0,
-      priceHistory: [120],
-      owned: 0,
-    },
-  ]);
+  const [currentStock, setCurrentStock] = useState<Stock | null>(null);
+  const [ownedStocks, setOwnedStocks] = useState<{ [key: string]: number }>({});
 
   const [assets, setAssets] = useState<Asset[]>([
     { id: "1", name: "Квартира", icon: "Home", cost: 50000, income: 500, owned: 0 },
@@ -77,68 +46,75 @@ const Index = () => {
     { id: "4", name: "Ресторан", icon: "UtensilsCrossed", cost: 150000, income: 2500, owned: 0 },
   ]);
 
+  const stockTemplates = [
+    { id: "1", name: "TechCorp", symbol: "TECH", basePrice: 150 },
+    { id: "2", name: "MegaBank", symbol: "BANK", basePrice: 80 },
+    { id: "3", name: "EnergyPlus", symbol: "ENRG", basePrice: 120 },
+    { id: "4", name: "FoodChain", symbol: "FOOD", basePrice: 95 },
+    { id: "5", name: "AutoMotive", symbol: "AUTO", basePrice: 110 },
+  ];
+
+  const generateNewStock = () => {
+    const template = stockTemplates[Math.floor(Math.random() * stockTemplates.length)];
+    const changePercent = (Math.random() - 0.5) * 15;
+    const price = Math.max(10, template.basePrice * (1 + changePercent / 100));
+    
+    setCurrentStock({
+      id: template.id,
+      name: template.name,
+      symbol: template.symbol,
+      price: parseFloat(price.toFixed(2)),
+      change: changePercent,
+    });
+  };
+
   useEffect(() => {
-    const stockInterval = setInterval(() => {
-      setStocks((prevStocks) =>
-        prevStocks.map((stock) => {
-          const changePercent = (Math.random() - 0.5) * 10;
-          const newPrice = Math.max(10, stock.price * (1 + changePercent / 100));
-          const newHistory = [...stock.priceHistory.slice(-20), newPrice];
-          return {
-            ...stock,
-            price: parseFloat(newPrice.toFixed(2)),
-            change: changePercent,
-            priceHistory: newHistory,
-          };
-        })
-      );
-    }, 3000);
+    generateNewStock();
 
     const incomeInterval = setInterval(() => {
       if (passiveIncome > 0) {
         setBalance((prev) => prev + passiveIncome / 60);
-        toast.success(`+$${(passiveIncome / 60).toFixed(2)} пассивный доход`, {
-          duration: 1000,
-        });
       }
     }, 1000);
 
     return () => {
-      clearInterval(stockInterval);
       clearInterval(incomeInterval);
     };
   }, [passiveIncome]);
 
-  const buyStock = (stockId: string) => {
-    const stock = stocks.find((s) => s.id === stockId);
-    if (!stock) return;
+  const buyStock = () => {
+    if (!currentStock) return;
 
-    if (balance >= stock.price) {
-      setBalance((prev) => prev - stock.price);
-      setStocks((prevStocks) =>
-        prevStocks.map((s) =>
-          s.id === stockId ? { ...s, owned: s.owned + 1 } : s
-        )
-      );
+    if (balance >= currentStock.price) {
+      setBalance((prev) => prev - currentStock.price);
+      setOwnedStocks((prev) => ({
+        ...prev,
+        [currentStock.id]: (prev[currentStock.id] || 0) + 1,
+      }));
       addExperience(10);
-      toast.success(`Куплена акция ${stock.symbol} за $${stock.price}`);
+      toast.success(`Куплена акция ${currentStock.symbol} за $${currentStock.price}`);
+      generateNewStock();
     } else {
       toast.error("Недостаточно средств!");
     }
   };
 
-  const sellStock = (stockId: string) => {
-    const stock = stocks.find((s) => s.id === stockId);
-    if (!stock || stock.owned === 0) return;
+  const sellStock = () => {
+    if (!currentStock) return;
+    const owned = ownedStocks[currentStock.id] || 0;
 
-    setBalance((prev) => prev + stock.price);
-    setStocks((prevStocks) =>
-      prevStocks.map((s) =>
-        s.id === stockId ? { ...s, owned: s.owned - 1 } : s
-      )
-    );
-    addExperience(5);
-    toast.success(`Продана акция ${stock.symbol} за $${stock.price}`);
+    if (owned > 0) {
+      setBalance((prev) => prev + currentStock.price);
+      setOwnedStocks((prev) => ({
+        ...prev,
+        [currentStock.id]: owned - 1,
+      }));
+      addExperience(5);
+      toast.success(`Продана акция ${currentStock.symbol} за $${currentStock.price}`);
+      generateNewStock();
+    } else {
+      toast.error("У вас нет этих акций!");
+    }
   };
 
   const buyAsset = (assetId: string) => {
@@ -209,31 +185,12 @@ const Index = () => {
     }
   };
 
-  const renderMiniChart = (priceHistory: number[]) => {
-    if (priceHistory.length < 2) return null;
-    const max = Math.max(...priceHistory);
-    const min = Math.min(...priceHistory);
-    const range = max - min || 1;
-
-    return (
-      <svg width="100" height="30" className="ml-auto">
-        <polyline
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          points={priceHistory
-            .map((price, i) => {
-              const x = (i / (priceHistory.length - 1)) * 100;
-              const y = 30 - ((price - min) / range) * 30;
-              return `${x},${y}`;
-            })
-            .join(" ")}
-        />
-      </svg>
-    );
-  };
-
   const experiencePercent = (experience / (level * 100)) * 100;
+
+  const totalStocksValue = Object.entries(ownedStocks).reduce((sum, [id, count]) => {
+    const template = stockTemplates.find(s => s.id === id);
+    return sum + (template?.basePrice || 0) * count;
+  }, 0);
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
@@ -284,191 +241,202 @@ const Index = () => {
           </Card>
         </div>
 
-        <Tabs defaultValue="stocks" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="stocks">
-              <Icon name="LineChart" size={16} className="mr-2" />
-              Акции
-            </TabsTrigger>
-            <TabsTrigger value="assets">
-              <Icon name="Building2" size={16} className="mr-2" />
-              Активы
-            </TabsTrigger>
-            <TabsTrigger value="loans">
-              <Icon name="CreditCard" size={16} className="mr-2" />
-              Кредиты
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="stocks" className="space-y-4 mt-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {stocks.map((stock) => (
-                <Card
-                  key={stock.id}
-                  className="hover:shadow-lg transition-all animate-scale-in hover-scale"
-                >
-                  <CardHeader>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="space-y-6">
+            <Card className="border-accent/30">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Icon name="LineChart" size={20} />
+                  Торговля акциями
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {currentStock ? (
+                  <div className="space-y-4">
                     <div className="flex items-start justify-between">
                       <div>
-                        <CardTitle className="text-xl">{stock.name}</CardTitle>
+                        <h3 className="text-2xl font-bold">{currentStock.name}</h3>
                         <Badge variant="secondary" className="mt-1">
-                          {stock.symbol}
+                          {currentStock.symbol}
                         </Badge>
                       </div>
                       <div
                         className={`text-right ${
-                          stock.change >= 0 ? "text-success" : "text-destructive"
+                          currentStock.change >= 0 ? "text-success" : "text-destructive"
                         }`}
                       >
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1 text-lg">
                           <Icon
-                            name={stock.change >= 0 ? "TrendingUp" : "TrendingDown"}
-                            size={16}
+                            name={currentStock.change >= 0 ? "TrendingUp" : "TrendingDown"}
+                            size={20}
                           />
-                          {stock.change.toFixed(2)}%
+                          {currentStock.change.toFixed(2)}%
                         </div>
                       </div>
                     </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div className="text-2xl font-bold text-primary">
-                        ${stock.price.toFixed(2)}
-                      </div>
-                      {renderMiniChart(stock.priceHistory)}
+
+                    <div className="text-4xl font-bold text-primary">
+                      ${currentStock.price.toFixed(2)}
                     </div>
-                    {stock.owned > 0 && (
-                      <div className="text-sm text-muted-foreground">
-                        В портфеле: {stock.owned} шт (${(stock.owned * stock.price).toFixed(2)})
+
+                    {ownedStocks[currentStock.id] > 0 && (
+                      <div className="p-3 bg-muted rounded-lg">
+                        <div className="text-sm text-muted-foreground">
+                          В портфеле: {ownedStocks[currentStock.id]} шт
+                        </div>
                       </div>
                     )}
-                    <div className="flex gap-2">
+
+                    <div className="flex gap-3">
                       <Button
-                        onClick={() => buyStock(stock.id)}
+                        onClick={buyStock}
                         className="flex-1"
-                        size="sm"
+                        disabled={balance < currentStock.price}
                       >
-                        <Icon name="Plus" size={16} className="mr-1" />
+                        <Icon name="ShoppingCart" size={18} className="mr-2" />
                         Купить
                       </Button>
                       <Button
-                        onClick={() => sellStock(stock.id)}
+                        onClick={sellStock}
                         variant="outline"
                         className="flex-1"
-                        size="sm"
-                        disabled={stock.owned === 0}
+                        disabled={!ownedStocks[currentStock.id] || ownedStocks[currentStock.id] === 0}
                       >
-                        <Icon name="Minus" size={16} className="mr-1" />
+                        <Icon name="DollarSign" size={18} className="mr-2" />
                         Продать
+                      </Button>
+                    </div>
+
+                    <Button
+                      onClick={generateNewStock}
+                      variant="secondary"
+                      className="w-full"
+                    >
+                      <Icon name="RefreshCw" size={18} className="mr-2" />
+                      Следующая акция
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    Загрузка акций...
+                  </div>
+                )}
+
+                {totalStocksValue > 0 && (
+                  <div className="pt-4 border-t">
+                    <div className="text-sm text-muted-foreground">
+                      Общая стоимость портфеля
+                    </div>
+                    <div className="text-2xl font-bold text-primary">
+                      ${totalStocksValue.toFixed(2)}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Icon name="CreditCard" size={20} />
+                  Кредиты
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  {[10000, 25000, 50000, 100000].map((amount) => (
+                    <Button
+                      key={amount}
+                      variant="outline"
+                      className="flex flex-col h-auto p-4"
+                      onClick={() => takeLoan(amount)}
+                    >
+                      <div className="text-lg font-bold">
+                        ${amount.toLocaleString()}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Ставка: 10%
+                      </div>
+                    </Button>
+                  ))}
+                </div>
+
+                {loans.length > 0 && (
+                  <div className="space-y-3 pt-4 border-t">
+                    <h4 className="font-semibold">Активные кредиты</h4>
+                    {loans.map((loan) => (
+                      <Card key={loan.id} className="bg-muted/50">
+                        <CardContent className="pt-4">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <div className="font-bold">
+                                ${loan.amount.toFixed(2)}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                Платёж: ${loan.monthly.toFixed(2)}
+                              </div>
+                            </div>
+                            <Button 
+                              onClick={() => payLoan(loan.id)}
+                              size="sm"
+                            >
+                              Оплатить
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Icon name="Building2" size={20} />
+                Активы
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {assets.map((asset) => (
+                <Card
+                  key={asset.id}
+                  className="hover:shadow-lg transition-all"
+                >
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-4">
+                      <div className="p-4 bg-primary/10 rounded-xl">
+                        <Icon name={asset.icon as any} size={28} className="text-primary" />
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="font-bold text-lg">{asset.name}</h4>
+                        <div className="text-sm text-success">
+                          +${asset.income}/мин
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          Цена: ${asset.cost.toLocaleString()}
+                        </div>
+                        {asset.owned > 0 && (
+                          <Badge variant="secondary" className="mt-1">
+                            Куплено: {asset.owned}
+                          </Badge>
+                        )}
+                      </div>
+                      <Button
+                        onClick={() => buyAsset(asset.id)}
+                        disabled={balance < asset.cost}
+                      >
+                        <Icon name="Plus" size={18} />
                       </Button>
                     </div>
                   </CardContent>
                 </Card>
               ))}
-            </div>
-          </TabsContent>
-
-          <TabsContent value="assets" className="space-y-4 mt-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {assets.map((asset) => (
-                <Card
-                  key={asset.id}
-                  className="hover:shadow-lg transition-all animate-scale-in"
-                >
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="p-3 bg-primary/10 rounded-lg">
-                          <Icon name={asset.icon as any} size={24} className="text-primary" />
-                        </div>
-                        <div>
-                          <CardTitle>{asset.name}</CardTitle>
-                          <div className="text-sm text-muted-foreground mt-1">
-                            +${asset.income}/мин
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div className="text-xl font-bold">${asset.cost.toLocaleString()}</div>
-                      {asset.owned > 0 && (
-                        <Badge variant="secondary">
-                          Куплено: {asset.owned}
-                        </Badge>
-                      )}
-                    </div>
-                    <Button
-                      onClick={() => buyAsset(asset.id)}
-                      className="w-full"
-                      disabled={balance < asset.cost}
-                    >
-                      <Icon name="ShoppingCart" size={16} className="mr-2" />
-                      Купить актив
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </TabsContent>
-
-          <TabsContent value="loans" className="space-y-4 mt-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-              {[10000, 25000, 50000, 100000].map((amount) => (
-                <Card
-                  key={amount}
-                  className="hover:shadow-lg transition-all cursor-pointer animate-scale-in"
-                  onClick={() => takeLoan(amount)}
-                >
-                  <CardHeader>
-                    <CardTitle className="text-center">
-                      ${amount.toLocaleString()}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="text-center space-y-2">
-                    <div className="text-sm text-muted-foreground">
-                      Ставка: 10%
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      К возврату: ${(amount * 1.1).toLocaleString()}
-                    </div>
-                    <Button className="w-full mt-2" size="sm">
-                      <Icon name="DollarSign" size={16} className="mr-1" />
-                      Взять
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-
-            {loans.length > 0 && (
-              <div className="space-y-4">
-                <h3 className="text-xl font-semibold">Активные кредиты</h3>
-                {loans.map((loan) => (
-                  <Card key={loan.id} className="animate-slide-up">
-                    <CardContent className="pt-6">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="text-lg font-bold">
-                            Остаток: ${loan.amount.toFixed(2)}
-                          </div>
-                          <div className="text-sm text-muted-foreground">
-                            Ежемесячный платёж: ${loan.monthly.toFixed(2)}
-                          </div>
-                        </div>
-                        <Button onClick={() => payLoan(loan.id)}>
-                          <Icon name="Check" size={16} className="mr-2" />
-                          Оплатить
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </TabsContent>
-        </Tabs>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );
