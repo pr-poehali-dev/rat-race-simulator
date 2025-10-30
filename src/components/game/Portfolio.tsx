@@ -29,7 +29,7 @@ const Portfolio = ({ ownedItems }: PortfolioProps) => {
               <div>
                 <div className="font-medium">{item.name}</div>
                 <div className="text-xs text-muted-foreground">
-                  ${item.purchasePrice.toFixed(0)}
+                  {item.purchasePrice > 0 && `$${item.purchasePrice.toFixed(0)}`}
                   {item.loanPayment && ' (кредит)'}
                 </div>
               </div>
